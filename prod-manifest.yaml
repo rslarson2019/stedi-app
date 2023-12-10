@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prod-stedi-riley
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prod-stedi-riley
+  template:
+    metadata:
+      labels:
+        app: prod-stedi-riley
+    spec:
+      containers:
+        - name: prod-stedi-riley
+          image: gcr.io/cubs-consulting/stedi # This image needs to refer to the NEW Artifact registry repositorry
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secrets-riley
+                  key: REDIS_PASS
+            - name: REDIS_HOST
+              value: "redis-stedi-riley"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: REDIS_DB
+              value: "0"
+            - name: KAFKA_BROKER
+              value: "localhost:9092"
+            - name: TWILIO_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: riley-twilio-dev
+                  key: twilio_token
+          ports:
+            - containerPort: 443
+          resources:
+            limits:
+              cpu: ".5"
+              memory: "500Mi"
+            requests:
+              cpu: ".25"
+              memory: "250Mi"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 4567
+            initialDelaySeconds: 3
+            periodSeconds: 3
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: prod-stedi-riley-nodeport
+spec:
+  selector:
+    app: prod-stedi-riley
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 4567
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prod-stedi-riley-ingress
+  annotations:
+    kubernetes.io/ingress.global-static-ip-name: prod-stedi-riley-public # This IP has not been created yet - need to create first
+    networking.gke.io/managed-certificates: prod-stedi-riley-certificate
+    # kubernetes.io/ingress.allow-http: "false"
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prod-stedi-riley-nodeport # This needs to match line 53
+            port:
+              number: 80
+---
+apiVersion: networking.gke.io/v1
+kind: ManagedCertificate
+metadata:
+  name: prod-stedi-riley-certificate # This needs to match line 68
+spec:
+  domains:
+    - riley.cit262.com 
+    
